@@ -6,7 +6,7 @@
 #import <pthread.h>
 #import "mipc.h"
 
-#define MIPC_MSG_SIZE 1024
+#define MIPC_MSG_SIZE 65536
 
 typedef struct {
     mach_msg_header_t header;

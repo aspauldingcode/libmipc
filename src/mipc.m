@@ -7,7 +7,7 @@
 
 #include <string.h>
 
-#define MIPC_MSG_SIZE 1024
+#define MIPC_MSG_SIZE 65536
 
 #import "mipc_private.h"
 
