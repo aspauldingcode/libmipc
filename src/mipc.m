@@ -46,7 +46,7 @@ void *mipc_worker(void *arg) {
                         dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
                             bus->on_message(connection, data_copy);
                             free(data_copy);
-                            free(connection);
+                            // free(connection); // REMOVED: User (helper) now owns this connection
                             dispatch_group_leave(bus->group);
                         });
                     } else {
