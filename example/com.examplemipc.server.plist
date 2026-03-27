@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.examplemipc.server</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>REPLACE_ME_WITH_PATH</string>
+    </array>
+    <key>MachServices</key>
+    <dict>
+        <key>com.examplemipc.server</key>
+        <true/>
+    </dict>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/com.examplemipc.server.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/com.examplemipc.server.err.log</string>
+</dict>
+</plist>
