@@ -1,6 +1,12 @@
 # libmipc
 
-[![libmipc CI](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml/badge.svg)](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml)
+| Test Suite | ARM (macOS 14) | Intel (macOS 13) |
+| :--- | :--- | :--- |
+| **Basic Connectivity** | [![test (macos-14)](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml/badge.svg?branch=main&job=check%20(test,%20macos-14))](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml) | [![test (macos-13)](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml/badge.svg?branch=main&job=check%20(test,%20macos-13))](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml) |
+| **Security Hardening** | [![security (macos-14)](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml/badge.svg?branch=main&job=check%20(security,%20macos-14))](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml) | [![security (macos-13)](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml/badge.svg?branch=main&job=check%20(security,%20macos-13))](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml) |
+| **Stress & Flooding** | [![stress (macos-14)](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml/badge.svg?branch=main&job=check%20(stress,%20macos-14))](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml) | [![stress (macos-13)](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml/badge.svg?branch=main&job=check%20(stress,%20macos-13))](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml) |
+| **Dynamic Discovery** | [![discovery (macos-14)](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml/badge.svg?branch=main&job=check%20(discovery,%20macos-14))](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml) | [![discovery (macos-13)](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml/badge.svg?branch=main&job=check%20(discovery,%20macos-13))](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml) |
+| **Sandbox Isolation** | [![sandbox (macos-14)](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml/badge.svg?branch=main&job=check%20(sandbox,%20macos-14))](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml) | [![sandbox (macos-13)](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml/badge.svg?branch=main&job=check%20(sandbox,%20macos-13))](https://github.com/aspauldingcode/libmipc/actions/workflows/ci.yml) |
 
 libmipc is a super simple way for two different programs on your Mac to talk to each other. It's like a private walkie-talkie system for your apps.
 

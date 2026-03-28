@@ -7,8 +7,15 @@ on:
     branches: [ main ]
 
 jobs:
-  build-and-test:
-    runs-on: macos-latest
+  check:
+    name: ${{ matrix.check }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [test, discovery, security, stress, sandbox]
+        os: [macos-14, macos-13]
+    
     steps:
       - uses: actions/checkout@v4
 
@@ -18,8 +25,11 @@ jobs:
       - name: Magic Nix Cache
         uses: DeterminateSystems/magic-nix-cache-action@main
 
-      - name: Build libmipc
-        run: nix build . --impure
-
-      - name: Run Unit Tests
-        run: nix flake check --impure
+      - name: Run ${{ matrix.check }}
+        run: |
+          if [ "${{ matrix.os }}" = "macos-14" ]; then
+            system="aarch64-darwin"
+          else
+            system="x86_64-darwin"
+          fi
+          nix build .#checks.${system}.${{ matrix.check }} --impure
