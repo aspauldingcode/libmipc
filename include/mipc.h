@@ -20,7 +20,7 @@ typedef struct mipc_obj *mipc;
  * @param on_message A block of code that runs whenever someone sends a message.
  * @return           A handle to manage the server, or NULL if it fails.
  */
-mipc _Nullable mipc_listen(const char *name, void (^on_message)(mipc connection, const char *text));
+mipc _Nullable mipc_listen(const char *name, void (^_Nullable on_message)(mipc connection, const char *text));
 
 /**
  * Connects to a server by its name.
@@ -29,7 +29,7 @@ mipc _Nullable mipc_listen(const char *name, void (^on_message)(mipc connection,
  * @param on_message A block of code that runs if the server sends something back.
  * @return           A handle to manage the connection, or NULL if it fails.
  */
-mipc _Nullable mipc_connect(const char *name, void (^on_message)(mipc connection, const char *text));
+mipc _Nullable mipc_connect(const char *name, void (^_Nullable on_message)(mipc connection, const char *text));
 
 /**
  * Sends some text to the other end of a connection.
@@ -58,7 +58,7 @@ bool mipc_publish(mipc connection, const char *key);
  * @param on_message A block of code that runs if the server sends something back.
  * @return           A handle to manage the connection, or NULL if it fails.
  */
-mipc _Nullable mipc_connect_dynamic(const char *key, void (^on_message)(mipc connection, const char *text));
+mipc _Nullable mipc_connect_dynamic(const char *key, void (^_Nullable on_message)(mipc connection, const char *text));
 
 /**
  * Closes a connection and cleans up.
