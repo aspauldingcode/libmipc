@@ -26,6 +26,7 @@ struct mipc_obj {
     bool is_listener;
     bool should_exit;
     pthread_t thread;
+    pthread_mutex_t lock;
     dispatch_group_t group;
 };
 

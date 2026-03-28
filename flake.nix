@@ -167,6 +167,29 @@
             mkdir $out
           '';
         };
+
+        stress = pkgs.stdenvNoCC.mkDerivation {
+          pname = "libmipc-stress";
+          version = "1.0.0";
+          src = ./.;
+          __noChroot = true;
+          buildPhase = ''
+            unset SDKROOT
+            unset DEVELOPER_DIR
+            unset NIX_APPLE_SDK_VERSION
+            export PATH=/usr/bin:/bin:/usr/sbin
+            
+            echo "Compiling stress test runner..."
+            xcrun clang -arch ${arch} -o tests_stress \
+              -fobjc-arc -Wall -Werror -Wextra -Wpedantic -Iinclude src/mipc.m src/tests_stress.m \
+              -framework Foundation -framework CoreFoundation
+          '';
+          installPhase = ''
+            echo "Running stress tests..."
+            ./tests_stress
+            mkdir $out
+          '';
+        };
       });
     };
 }

@@ -24,6 +24,7 @@ int main(void) {
 
         struct mipc_obj *listener_obj = calloc(1, sizeof(struct mipc_obj));
         assert(listener_obj != NULL);
+        pthread_mutex_init(&listener_obj->lock, NULL);
         listener_obj->local_port = mock_port;
         listener_obj->group = dispatch_group_create();
         listener_obj->on_message = [^(mipc connection, const char *text) {
@@ -45,6 +46,7 @@ int main(void) {
         
         struct mipc_obj *client_obj = calloc(1, sizeof(struct mipc_obj));
         assert(client_obj != NULL);
+        pthread_mutex_init(&client_obj->lock, NULL);
         client_obj->local_port = MACH_PORT_NULL; 
         client_obj->remote_port = mock_port;
         client_obj->group = dispatch_group_create();
