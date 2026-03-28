@@ -2,14 +2,14 @@
 #import <mach/mach.h>
 #import <servers/bootstrap.h>
 #import <pthread.h>
+#import <notify.h>
+#import <CoreFoundation/CoreFoundation.h>
 #import "mipc.h"
 #import "mipc_private.h"
 
 #include <string.h>
 
 #define MIPC_MSG_SIZE 65536
-
-#import "mipc_private.h"
 
 void *mipc_worker(void *arg) {
     mipc bus = (mipc)arg;
@@ -71,6 +71,7 @@ mipc _Nullable mipc_listen(const char *name, void (^on_message)(mipc connection,
     mipc bus = calloc(1, sizeof(struct mipc_obj));
     if (!bus) return NULL;
     
+    bus->name = strdup(name);
     bus->local_port = port;
     bus->is_listener = true;
     bus->on_message = [on_message copy];
@@ -140,6 +141,56 @@ bool mipc_send(mipc _Nullable connection, const char *text_str) {
     return kr == KERN_SUCCESS;
 }
 
+bool mipc_publish(mipc connection, const char *key) {
+    if (!connection || !key || !connection->name || !connection->is_listener) return false;
+
+    NSString *nsKey = [NSString stringWithFormat:@"libmipc_%s", key];
+    NSString *nsValue = [NSString stringWithUTF8String:connection->name];
+
+    CFPreferencesSetValue((__bridge CFStringRef)nsKey,
+                          (__bridge CFStringRef)nsValue,
+                          kCFPreferencesAnyApplication,
+                          kCFPreferencesCurrentUser,
+                          kCFPreferencesAnyHost);
+    
+    CFPreferencesSynchronize(kCFPreferencesAnyApplication,
+                             kCFPreferencesCurrentUser,
+                             kCFPreferencesAnyHost);
+
+    // Also post a notification to alert clients
+    NSString *notifName = [NSString stringWithFormat:@"com.aspauldingcode.libmipc.update.%s", key];
+    notify_post([notifName UTF8String]);
+
+    return true;
+}
+
+mipc _Nullable mipc_connect_dynamic(const char *key, void (^on_message)(mipc connection, const char *text)) {
+    if (!key) return NULL;
+
+    NSString *nsKey = [NSString stringWithFormat:@"libmipc_%s", key];
+    
+    // Force a sync to get the latest from other processes
+    CFPreferencesSynchronize(kCFPreferencesAnyApplication,
+                             kCFPreferencesCurrentUser,
+                             kCFPreferencesAnyHost);
+
+    CFPropertyListRef val = CFPreferencesCopyValue((__bridge CFStringRef)nsKey,
+                                                   kCFPreferencesAnyApplication,
+                                                   kCFPreferencesCurrentUser,
+                                                   kCFPreferencesAnyHost);
+    
+    if (!val || CFGetTypeID(val) != CFStringGetTypeID()) {
+        if (val) CFRelease(val);
+        return NULL;
+    }
+
+    NSString *serviceName = (__bridge NSString *)val;
+    mipc conn = mipc_connect([serviceName UTF8String], on_message);
+    
+    CFRelease(val);
+    return conn;
+}
+
 void mipc_close(mipc _Nullable connection) {
     if (!connection || connection->should_exit) return;
     
@@ -179,5 +230,6 @@ void mipc_close(mipc _Nullable connection) {
         dispatch_group_wait(connection->group, DISPATCH_TIME_FOREVER);
     }
 
+    free(connection->name);
     free(connection);
 }

@@ -41,6 +41,26 @@ mipc _Nullable mipc_connect(const char *name, void (^on_message)(mipc connection
 bool mipc_send(mipc _Nullable connection, const char *text);
 
 /**
+ * Publishes the server's name to a global registry (Global Domain Preferences).
+ * This allows sandboxed clients to discover dynamic service names.
+ *
+ * @param connection The listener handle (from mipc_listen).
+ * @param key        A well-known key (e.g., "oowm.service").
+ * @return           True if published, false otherwise.
+ */
+bool mipc_publish(mipc connection, const char *key);
+
+/**
+ * Connects to a server by looking up its name from a global registry.
+ * This is the sandbox-tolerant version of mipc_connect.
+ *
+ * @param key        The well-known key used in mipc_publish.
+ * @param on_message A block of code that runs if the server sends something back.
+ * @return           A handle to manage the connection, or NULL if it fails.
+ */
+mipc _Nullable mipc_connect_dynamic(const char *key, void (^on_message)(mipc connection, const char *text));
+
+/**
  * Closes a connection and cleans up.
  */
 void mipc_close(mipc _Nullable connection);

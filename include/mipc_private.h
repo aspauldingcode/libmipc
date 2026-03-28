@@ -19,6 +19,7 @@ typedef struct {
 } mipc_rcv_msg_t;
 
 struct mipc_obj {
+    char *name;
     mach_port_t local_port;
     mach_port_t remote_port;
     void (^on_message)(mipc connection, const char *text);

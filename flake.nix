@@ -62,7 +62,7 @@
             echo "Compiling tests..."
             xcrun clang -arch ${arch} -o tests_mipc \
               -fobjc-arc -Wall -Werror -Iinclude src/mipc.m src/tests_mipc.m \
-              -framework Foundation
+              -framework Foundation -framework CoreFoundation
           '';
           installPhase = ''
             echo "Running tests..."
@@ -85,12 +85,12 @@
             echo "Compiling example server..."
             xcrun clang -arch ${arch} -o server \
               -fobjc-arc -Wall -Werror -Iinclude src/mipc.m example/server.m \
-              -framework Foundation
+              -framework Foundation -framework CoreFoundation
               
             echo "Compiling example client..."
             xcrun clang -arch ${arch} -o client \
               -fobjc-arc -Wall -Werror -Iinclude src/mipc.m example/client.m \
-              -framework Foundation
+              -framework Foundation -framework CoreFoundation
           '';
           installPhase = ''
             mkdir -p $out/bin
@@ -112,12 +112,35 @@
             echo "Compiling security test runner..."
             xcrun clang -arch ${arch} -o tests_security \
               -fobjc-arc -Wall -Werror -Iinclude src/mipc.m src/tests_security.m \
-              -framework Foundation
+              -framework Foundation -framework CoreFoundation
           '';
           installPhase = ''
             set -x
             echo "Running security tests..."
             ./tests_security
+            mkdir $out
+          '';
+        };
+
+        discovery = pkgs.stdenvNoCC.mkDerivation {
+          pname = "libmipc-discovery";
+          version = "1.0.0";
+          src = ./.;
+          __noChroot = true;
+          buildPhase = ''
+            unset SDKROOT
+            unset DEVELOPER_DIR
+            unset NIX_APPLE_SDK_VERSION
+            export PATH=/usr/bin:/bin:/usr/sbin
+            
+            echo "Compiling discovery test runner..."
+            xcrun clang -arch ${arch} -o tests_discovery \
+              -fobjc-arc -Wall -Werror -Iinclude src/mipc.m src/tests_discovery.m \
+              -framework Foundation -framework CoreFoundation
+          '';
+          installPhase = ''
+            echo "Running discovery tests..."
+            ./tests_discovery
             mkdir $out
           '';
         };
