@@ -8,28 +8,17 @@ on:
 
 jobs:
   check:
-    name: ${{ matrix.check }} (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.check }}
+    runs-on: macos-14
     strategy:
       fail-fast: false
       matrix:
         check: [test, discovery, security, stress, sandbox]
-        os: [macos-14, macos-13]
     
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
-
-      - name: Magic Nix Cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Run ${{ matrix.check }}
-        run: |
-          if [ "${{ matrix.os }}" = "macos-14" ]; then
-            system="aarch64-darwin"
-          else
-            system="x86_64-darwin"
-          fi
-          nix build .#checks.${system}.${{ matrix.check }} --impure
+        run: nix build .#checks.aarch64-darwin.${{ matrix.check }} --impure
