@@ -4,8 +4,14 @@
 #import <assert.h>
 #import <unistd.h>
 #import <string.h>
+#import <pthread.h>
 
-int main() {
+/**
+ * libmipc Unit Tests (Bootstrap-Independent)
+ * Tests raw Mach messaging using the internal mipc_worker.
+ */
+
+int main(void) {
     @autoreleasepool {
         __block NSString *serverMsg = nil;
         dispatch_group_t server_group = dispatch_group_create();
@@ -17,9 +23,11 @@ int main() {
         assert(kr == KERN_SUCCESS);
 
         struct mipc_obj *listener_obj = calloc(1, sizeof(struct mipc_obj));
+        assert(listener_obj != NULL);
         listener_obj->local_port = mock_port;
         listener_obj->group = dispatch_group_create();
         listener_obj->on_message = [^(mipc connection, const char *text) {
+            (void)connection;
             serverMsg = [NSString stringWithUTF8String:text];
             printf("Mock Listener received: %s\n", text);
             
@@ -36,10 +44,12 @@ int main() {
         dispatch_group_t client_group = dispatch_group_create();
         
         struct mipc_obj *client_obj = calloc(1, sizeof(struct mipc_obj));
-        client_obj->local_port = MACH_PORT_NULL; // Client doesn't have a listener port here
+        assert(client_obj != NULL);
+        client_obj->local_port = MACH_PORT_NULL; 
         client_obj->remote_port = mock_port;
         client_obj->group = dispatch_group_create();
         client_obj->on_message = [^(mipc connection, const char *text) {
+            (void)connection;
             clientMsg = [NSString stringWithUTF8String:text];
             printf("Client received: %s\n", text);
             dispatch_group_leave(client_group);
@@ -58,25 +68,16 @@ int main() {
         mipc_send(client_obj, "Hello Server");
         
         // Wait for server to receive
-        dispatch_group_wait(server_group, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC));
+        dispatch_group_wait(server_group, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC));
         assert([serverMsg isEqualToString:@"Hello Server"]);
         
         // Wait for client to receive reply
-        dispatch_group_wait(client_group, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC));
+        dispatch_group_wait(client_group, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC));
         assert([clientMsg isEqualToString:@"ACK from Server"]);
         
         // Cleanup
-        listener_obj->should_exit = true;
-        client_obj->should_exit = true;
-        
-        pthread_join(listener_obj->thread, NULL);
-        pthread_join(client_obj->thread, NULL);
-        
-        mach_port_mod_refs(mach_task_self(), mock_port, MACH_PORT_RIGHT_RECEIVE, -1);
-        mach_port_mod_refs(mach_task_self(), client_rcv_port, MACH_PORT_RIGHT_RECEIVE, -1);
-        
-        free(listener_obj);
-        free(client_obj);
+        mipc_close(listener_obj);
+        mipc_close(client_obj);
         
         printf("MIPC Bootstrap-Independent API Test PASSED\n");
     }

@@ -26,7 +26,7 @@
             
             echo "Compiling libmipc..."
             xcrun clang -arch ${arch} -c src/mipc.m \
-              -fobjc-arc -Wall -Werror -Iinclude
+              -fobjc-arc -Wall -Werror -Wextra -Wpedantic -Iinclude
             
             echo "Creating static library..."
             ar rcs libmipc.a mipc.o
@@ -61,7 +61,7 @@
             export PATH=/usr/bin:/bin:/usr/sbin
             echo "Compiling tests..."
             xcrun clang -arch ${arch} -o tests_mipc \
-              -fobjc-arc -Wall -Werror -Iinclude src/mipc.m src/tests_mipc.m \
+              -fobjc-arc -Wall -Werror -Wextra -Wpedantic -Iinclude src/mipc.m src/tests_mipc.m \
               -framework Foundation -framework CoreFoundation
           '';
           installPhase = ''
@@ -84,12 +84,12 @@
             
             echo "Compiling example server..."
             xcrun clang -arch ${arch} -o server \
-              -fobjc-arc -Wall -Werror -Iinclude src/mipc.m example/server.m \
+              -fobjc-arc -Wall -Werror -Wextra -Iinclude src/mipc.m example/server.m \
               -framework Foundation -framework CoreFoundation
               
             echo "Compiling example client..."
             xcrun clang -arch ${arch} -o client \
-              -fobjc-arc -Wall -Werror -Iinclude src/mipc.m example/client.m \
+              -fobjc-arc -Wall -Werror -Wextra -Iinclude src/mipc.m example/client.m \
               -framework Foundation -framework CoreFoundation
           '';
           installPhase = ''
@@ -111,7 +111,7 @@
             
             echo "Compiling security test runner..."
             xcrun clang -arch ${arch} -o tests_security \
-              -fobjc-arc -Wall -Werror -Iinclude src/mipc.m src/tests_security.m \
+              -fobjc-arc -Wall -Werror -Wextra -Wpedantic -Iinclude src/mipc.m src/tests_security.m \
               -framework Foundation -framework CoreFoundation
           '';
           installPhase = ''
@@ -135,12 +135,35 @@
             
             echo "Compiling discovery test runner..."
             xcrun clang -arch ${arch} -o tests_discovery \
-              -fobjc-arc -Wall -Werror -Iinclude src/mipc.m src/tests_discovery.m \
+              -fobjc-arc -Wall -Werror -Wextra -Wpedantic -Iinclude src/mipc.m src/tests_discovery.m \
               -framework Foundation -framework CoreFoundation
           '';
           installPhase = ''
             echo "Running discovery tests..."
             ./tests_discovery
+            mkdir $out
+          '';
+        };
+
+        sandbox = pkgs.stdenvNoCC.mkDerivation {
+          pname = "libmipc-sandbox";
+          version = "1.0.0";
+          src = ./.;
+          __noChroot = true;
+          buildPhase = ''
+            unset SDKROOT
+            unset DEVELOPER_DIR
+            unset NIX_APPLE_SDK_VERSION
+            export PATH=/usr/bin:/bin:/usr/sbin
+            
+            echo "Compiling sandbox verification runner..."
+            xcrun clang -arch ${arch} -o tests_sandbox \
+              -fobjc-arc -Wall -Werror -Wextra -Wpedantic -Iinclude src/mipc.m src/tests_sandbox.m \
+              -framework Foundation -framework CoreFoundation
+          '';
+          installPhase = ''
+            echo "Running sandbox verification tests..."
+            ./tests_sandbox
             mkdir $out
           '';
         };

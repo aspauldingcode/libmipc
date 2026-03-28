@@ -17,8 +17,9 @@ int main(int argc, char *argv[]) {
         NSString *command = [NSString stringWithUTF8String:argv[1]];
         __block BOOL responseReceived = NO;
 
-        mipc session = mipc_connect("com.examplemipc.server", ^(mipc connection, const char *text) {
-            printf("[Client] Result: %s\n", text);
+        mipc session = mipc_connect("com.aspauldingcode.libmipc.example", ^(mipc connection, const char *text) {
+            (void)connection;
+            printf("Example Client received: %s\n", text);
             responseReceived = YES;
         });
 

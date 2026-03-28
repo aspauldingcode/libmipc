@@ -93,8 +93,12 @@ mipc _Nullable mipc_connect(const char *name, void (^on_message)(mipc connection
     if (kr != KERN_SUCCESS) return NULL;
 
     mipc bus = calloc(1, sizeof(struct mipc_obj));
-    if (!bus) return NULL;
+    if (!bus) {
+        mach_port_deallocate(mach_task_self(), remote_port);
+        return NULL;
+    }
     
+    bus->name = NULL;
     bus->remote_port = remote_port;
     bus->on_message = [on_message copy];
     bus->group = dispatch_group_create();
@@ -215,12 +219,12 @@ void mipc_close(mipc _Nullable connection) {
     
     // Deallocate local receive right
     if (connection->local_port != MACH_PORT_NULL) {
+        // Stop the worker thread by destroying its port
         mach_port_mod_refs(mach_task_self(), connection->local_port, MACH_PORT_RIGHT_RECEIVE, -1);
         connection->local_port = MACH_PORT_NULL;
     }
-    
-    // Deallocate remote send right (only if we own it)
-    if (connection->remote_port != MACH_PORT_NULL && !connection->is_listener) {
+
+    if (connection->remote_port != MACH_PORT_NULL) {
         mach_port_deallocate(mach_task_self(), connection->remote_port);
         connection->remote_port = MACH_PORT_NULL;
     }

@@ -14,7 +14,7 @@ static NSString *getConfigPath() {
     return [configDir stringByAppendingPathComponent:@"config.json"];
 }
 
-int main() {
+int main(void) {
     @autoreleasepool {
         printf("[Server] Starting secure bridge: com.examplemipc.server\n");
         

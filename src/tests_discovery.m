@@ -10,7 +10,7 @@
  * Every detail of the sandbox-tolerant discovery is tested here.
  */
 
-int main() {
+int main(void) {
     @autoreleasepool {
         setvbuf(stdout, NULL, _IONBF, 0);
         printf("DEBUG: Starting Comprehensive libmipc Discovery Tests...\n");
@@ -26,6 +26,7 @@ int main() {
         dispatch_group_t group = dispatch_group_create();
 
         mipc server1 = mipc_listen([serviceName1 UTF8String], ^(mipc connection, const char *text) {
+            (void)connection; (void)text;
             received = YES;
             dispatch_group_leave(group);
         });
@@ -33,7 +34,9 @@ int main() {
         assert(mipc_publish(server1, keyStr) == true);
 
         dispatch_group_enter(group);
-        mipc client1 = mipc_connect_dynamic(keyStr, NULL);
+        mipc client1 = mipc_connect_dynamic(keyStr, ^(mipc connection, const char *text) {
+            (void)connection; (void)text;
+        });
         assert(client1 != NULL);
         assert(mipc_send(client1, "hello") == true);
         
@@ -61,7 +64,9 @@ int main() {
 
         // --- Test 3: Failed Lookup ---
         printf("\n[Test 3] Non-existent Key Handling...\n");
-        mipc client_fail = mipc_connect_dynamic("invalid_key_123", NULL);
+        mipc client_fail = mipc_connect_dynamic("invalid_key_123", ^(mipc connection, const char *text) {
+            (void)connection; (void)text;
+        });
         assert(client_fail == NULL);
         printf("PASSED: Invalid key handled gracefully.\n");
 
@@ -75,6 +80,7 @@ int main() {
         dispatch_group_t group2 = dispatch_group_create();
 
         mipc server2 = mipc_listen([serviceName2 UTF8String], ^(mipc connection, const char *text) {
+            (void)connection; (void)text;
             received2 = YES;
             dispatch_group_leave(group2);
         });
@@ -84,7 +90,9 @@ int main() {
         assert(mipc_publish(server2, keyStr) == true);
 
         dispatch_group_enter(group2);
-        mipc client2 = mipc_connect_dynamic(keyStr, NULL);
+        mipc client2 = mipc_connect_dynamic(keyStr, ^(mipc connection, const char *text) {
+            (void)connection; (void)text;
+        });
         assert(client2 != NULL);
         assert(mipc_send(client2, "hello migration") == true);
 

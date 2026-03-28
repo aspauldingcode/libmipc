@@ -5,6 +5,7 @@
 #import <unistd.h>
 #import <string.h>
 #import <stdlib.h>
+#import <pthread.h>
 
 /**
  * libmipc Security & Misuse Tests
@@ -13,9 +14,9 @@
  */
 
 // Helpers to bypass compiler nullability and ARC checks for testing
-static const char *force_null_str() { return NULL; }
+static const char *force_null_str(void) { return NULL; }
 
-int main() {
+int main(void) {
     @autoreleasepool {
         setvbuf(stdout, NULL, _IONBF, 0);
         printf("DEBUG: Starting libmipc Misuse & Security Tests...\n");
@@ -67,6 +68,7 @@ int main() {
         listener_obj->local_port = mock_port;
         listener_obj->group = dispatch_group_create();
         listener_obj->on_message = [^(mipc connection, const char *text) {
+            (void)connection;
             receivedLen = (int)strlen(text);
             received = YES;
             dispatch_group_leave(group);
@@ -95,19 +97,9 @@ int main() {
         assert(receivedLen == MIPC_MSG_SIZE - 1); // MIPC_MSG_SIZE - 1
         printf("PASSED: Large string truncated safely to %d bytes.\n", receivedLen);
         
-        // The mipc_close function has a race condition. Replace with manual cleanup.
-        // Set exit flag to terminate the worker thread. It will exit on its next timeout.
-        listener_obj->should_exit = true;
-        pthread_join(listener_obj->thread, NULL);
-
-        // Wait for any in-flight message handlers to complete. This is the critical fix.
-        dispatch_group_wait(listener_obj->group, DISPATCH_TIME_FOREVER);
-
         // Final cleanup
-        mach_port_mod_refs(mach_task_self(), mock_port, MACH_PORT_RIGHT_RECEIVE, -1);
-        free(large_str);// The listener_obj->group was created by this test, so it should be released here.
-        // The block was also created here, so it's released with the object.
-        free(listener_obj);
+        mipc_close(listener_obj);
+        free(large_str);
 
         printf("--- ALL SECURITY TESTS PASSED ---\n");
     }
