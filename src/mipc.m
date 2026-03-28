@@ -200,17 +200,23 @@ mipc _Nullable mipc_connect_dynamic(const char *key, void (^on_message)(mipc con
 
 void mipc_close(mipc _Nullable bus) {
     if (!bus) return;
+    pthread_mutex_lock(&bus->lock);
+    bus->should_exit = true;
+    pthread_mutex_unlock(&bus->lock);
+    
     if (bus->is_listener && bus->local_port != MACH_PORT_NULL) {
         mipc_raw_msg_t msg = { .header = { .msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0), 
             .msgh_remote_port = bus->local_port, .msgh_size = sizeof(mach_msg_header_t) } };
         mach_msg(&msg.header, MACH_SEND_MSG, msg.header.msgh_size, 0, MACH_PORT_NULL, 0, MACH_PORT_NULL);
     }
+    
     if (bus->thread) pthread_join(bus->thread, NULL);
+    
     pthread_mutex_lock(&bus->lock);
-    bus->should_exit = true;
     if (bus->local_port != MACH_PORT_NULL) mach_port_mod_refs(mach_task_self(), bus->local_port, MACH_PORT_RIGHT_RECEIVE, -1);
     if (bus->remote_port != MACH_PORT_NULL) mach_port_deallocate(mach_task_self(), bus->remote_port);
     pthread_mutex_unlock(&bus->lock);
+    
     if (bus->group) dispatch_group_wait(bus->group, DISPATCH_TIME_FOREVER);
     pthread_mutex_destroy(&bus->lock);
     free(bus->name); free(bus);
