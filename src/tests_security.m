@@ -77,10 +77,11 @@ int main() {
         pthread_create(&listener_obj->thread, NULL, mipc_worker, listener_obj);
 
         // Allocate large string on the heap to avoid stack overflow
-        char *large_str = malloc(5000);
+        size_t testStringLen = MIPC_MSG_SIZE + 1000;
+        char *large_str = malloc(testStringLen + 1);
         assert(large_str != NULL);
-        memset(large_str, 'A', 4999);
-        large_str[4999] = '\0';
+        memset(large_str, 'A', testStringLen);
+        large_str[testStringLen] = '\0';
         
         struct mipc_obj client_obj_stack;
         memset((void *)&client_obj_stack, 0, sizeof(client_obj_stack));
@@ -91,7 +92,7 @@ int main() {
         dispatch_group_wait(group, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC));
         
         assert(received);
-        assert(receivedLen == 1023); // MIPC_MSG_SIZE - 1
+        assert(receivedLen == MIPC_MSG_SIZE - 1); // MIPC_MSG_SIZE - 1
         printf("PASSED: Large string truncated safely to %d bytes.\n", receivedLen);
         
         // The mipc_close function has a race condition. Replace with manual cleanup.
