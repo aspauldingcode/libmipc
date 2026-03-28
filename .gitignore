@@ -1,1 +1,19 @@
+# Binaries
+tests_*
+test_*
+tests_sandbox
+example/server
+example/client
+
+# Build Artifacts
 result
+*.o
+*.a
+*.dylib
+
+# System Files
+.DS_Store
+
+# Nix
+.direnv/
+.envrc

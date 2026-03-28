@@ -1,9 +1,7 @@
-#import <Foundation/Foundation.h>
-#import <mach/mach.h>
-#import <servers/bootstrap.h>
-#import <pthread.h>
 #import <notify.h>
 #import <CoreFoundation/CoreFoundation.h>
+#import <pthread.h>
+#import <servers/bootstrap.h>
 #import "mipc.h"
 #import "mipc_private.h"
 
@@ -14,58 +12,38 @@
 void *mipc_worker(void *arg) {
     mipc bus = (mipc)arg;
     mipc_rcv_msg_t msg;
-    kern_return_t kr;
-
     while (!bus->should_exit) {
-        memset(&msg, 0, sizeof(msg));
-        kr = mach_msg(&msg.msg.header,
+        kern_return_t kr = mach_msg(&msg.msg.header,
                       MACH_RCV_MSG | MACH_RCV_INTERRUPT | MACH_RCV_TIMEOUT,
-                      0,
-                      sizeof(msg),
-                      bus->local_port,
-                      100, // 100ms timeout
-                      MACH_PORT_NULL);
+                      0, sizeof(msg), bus->local_port, 100, MACH_PORT_NULL);
 
         if (kr == KERN_SUCCESS) {
-            // Security: Only accept simple messages (no descriptors/port rights in body)
-            // This prevents unexpected port right transfers or type-confusion attacks.
             if ((msg.msg.header.msgh_bits & MACH_MSGH_BITS_COMPLEX) || 
-                msg.msg.header.msgh_size <= sizeof(mach_msg_header_t)) {
-                continue;
-            }
+                msg.msg.header.msgh_size <= sizeof(mach_msg_header_t)) continue;
             
-            // Security: Explicitly null-terminate the received data
             msg.msg.data[MIPC_MSG_SIZE - 1] = '\0';
-            
             pthread_mutex_lock(&bus->lock);
             void (^handler)(mipc, const char *) = [bus->on_message copy];
             pthread_mutex_unlock(&bus->lock);
 
             if (handler) {
-                struct mipc_obj *connection = calloc(1, sizeof(struct mipc_obj));
-                if (connection) {
-                    connection->remote_port = msg.msg.header.msgh_remote_port;
-                    pthread_mutex_init(&connection->lock, NULL);
-                    // ...
-                    connection->local_port = bus->local_port; 
-                    
-                    char *data_copy = strdup(msg.msg.data);
-                    if (data_copy) {
-                        dispatch_group_enter(bus->group);
-                        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
-                            bus->on_message(connection, data_copy);
-                            free(data_copy);
-                            // free(connection); // REMOVED: User (helper) now owns this connection
-                            dispatch_group_leave(bus->group);
-                        });
-                    } else {
-                        free(connection);
-                    }
+                struct mipc_obj *conn = calloc(1, sizeof(struct mipc_obj));
+                if (conn) {
+                    conn->remote_port = msg.msg.header.msgh_remote_port;
+                    conn->local_port = bus->local_port; 
+                    pthread_mutex_init(&conn->lock, NULL);
+                    char *data = strdup(msg.msg.data);
+                    dispatch_group_enter(bus->group);
+                    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
+                        handler(conn, data);
+                        free(data);
+                        pthread_mutex_destroy(&conn->lock);
+                        free(conn);
+                        dispatch_group_leave(bus->group);
+                    });
                 }
             }
-        } else if (kr == MACH_RCV_PORT_DIED || kr == MACH_RCV_INVALID_NAME || kr == MACH_RCV_PORT_CHANGED) {
-            break;
-        }
+        } else if (kr != MACH_RCV_TIMED_OUT && kr != MACH_RCV_INTERRUPTED) break;
     }
     return NULL;
 }
@@ -80,6 +58,10 @@ mipc _Nullable mipc_listen(const char *name, void (^on_message)(mipc connection,
     mipc bus = calloc(1, sizeof(struct mipc_obj));
     if (!bus) return NULL;
     
+    // Increase queue limit for high-frequency listeners
+    mach_port_limits_t limits = { .mpl_qlimit = MACH_PORT_QLIMIT_MAX };
+    mach_port_set_attributes(mach_task_self(), port, MACH_PORT_LIMITS_INFO, (mach_port_info_t)&limits, MACH_PORT_LIMITS_INFO_COUNT);
+
     bus->name = strdup(name);
     bus->local_port = port;
     bus->is_listener = true;
@@ -116,6 +98,8 @@ mipc _Nullable mipc_connect(const char *name, void (^on_message)(mipc connection
 
     kr = mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &bus->local_port);
     if (kr == KERN_SUCCESS) {
+        mach_port_limits_t limits = { .mpl_qlimit = MACH_PORT_QLIMIT_MAX };
+        mach_port_set_attributes(mach_task_self(), bus->local_port, MACH_PORT_LIMITS_INFO, (mach_port_info_t)&limits, MACH_PORT_LIMITS_INFO_COUNT);
         mach_port_insert_right(mach_task_self(), bus->local_port, bus->local_port, MACH_MSG_TYPE_MAKE_SEND);
     }
 
@@ -214,59 +198,20 @@ mipc _Nullable mipc_connect_dynamic(const char *key, void (^on_message)(mipc con
     return conn;
 }
 
-void mipc_close(mipc _Nullable connection) {
-    if (!connection) return;
-
-    // Check should_exit under lock if possible, but we haven't locked yet.
-    // Early exit if already closing to prevent double-shutdown.
-    // Note: We can't lock yet if it's already been destroyed.
-    // However, the user calling mipc_close twice is a programmer error.
-    // We'll protect what we can.
-    
-    // For listeners, send a poison pill to unblock the worker thread
-    if (connection->is_listener && connection->local_port != MACH_PORT_NULL) {
-        mipc_raw_msg_t msg;
-        memset(&msg, 0, sizeof(msg));
-        msg.header.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0);
-        msg.header.msgh_remote_port = connection->local_port;
-        msg.header.msgh_local_port = MACH_PORT_NULL;
-        msg.header.msgh_size = sizeof(msg) - MIPC_MSG_SIZE; // Empty message
-        mach_msg(&msg.header, MACH_SEND_MSG, msg.header.msgh_size, 0, MACH_PORT_NULL, MACH_MSG_TIMEOUT_NONE, MACH_PORT_NULL);
+void mipc_close(mipc _Nullable bus) {
+    if (!bus) return;
+    if (bus->is_listener && bus->local_port != MACH_PORT_NULL) {
+        mipc_raw_msg_t msg = { .header = { .msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0), 
+            .msgh_remote_port = bus->local_port, .msgh_size = sizeof(mach_msg_header_t) } };
+        mach_msg(&msg.header, MACH_SEND_MSG, msg.header.msgh_size, 0, MACH_PORT_NULL, 0, MACH_PORT_NULL);
     }
-    
-    // Join worker thread
-    if (connection->thread != 0) {
-        pthread_join(connection->thread, NULL);
-        connection->thread = 0;
-    }
-    
-    pthread_mutex_lock(&connection->lock);
-    connection->should_exit = true;
-
-    // Deallocate local receive right
-    if (connection->local_port != MACH_PORT_NULL) {
-        // Stop the worker thread by destroying its port
-        mach_port_mod_refs(mach_task_self(), connection->local_port, MACH_PORT_RIGHT_RECEIVE, -1);
-        connection->local_port = MACH_PORT_NULL;
-    }
-
-    if (connection->remote_port != MACH_PORT_NULL) {
-        mach_port_deallocate(mach_task_self(), connection->remote_port);
-        connection->remote_port = MACH_PORT_NULL;
-    }
-    pthread_mutex_unlock(&connection->lock);
-    
-    // Wait for all in-flight message blocks to complete
-    if (connection->group) {
-        dispatch_group_wait(connection->group, DISPATCH_TIME_FOREVER);
-        connection->group = NULL;
-    }
-
-    pthread_mutex_lock(&connection->lock);
-    connection->on_message = NULL;
-    pthread_mutex_unlock(&connection->lock);
-    
-    pthread_mutex_destroy(&connection->lock);
-    free(connection->name);
-    free(connection);
+    if (bus->thread) pthread_join(bus->thread, NULL);
+    pthread_mutex_lock(&bus->lock);
+    bus->should_exit = true;
+    if (bus->local_port != MACH_PORT_NULL) mach_port_mod_refs(mach_task_self(), bus->local_port, MACH_PORT_RIGHT_RECEIVE, -1);
+    if (bus->remote_port != MACH_PORT_NULL) mach_port_deallocate(mach_task_self(), bus->remote_port);
+    pthread_mutex_unlock(&bus->lock);
+    if (bus->group) dispatch_group_wait(bus->group, DISPATCH_TIME_FOREVER);
+    pthread_mutex_destroy(&bus->lock);
+    free(bus->name); free(bus);
 }

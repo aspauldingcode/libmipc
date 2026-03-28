@@ -1,74 +1,78 @@
-#ifndef LIB_MIPC_H
-#define LIB_MIPC_H
+#ifndef MIPC_H
+#define MIPC_H
 
-#include <stdbool.h>
 #import <Foundation/Foundation.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+/**
+ * libmipc: A Secure, Sandbox-Tolerant Mach IPC Library
+ *
+ * Designed for high-performance communication between sandboxed and
+ * non-sandboxed processes on macOS.
+ */
 
-NS_ASSUME_NONNULL_BEGIN
+@class NSString;
 
-/** A session handle representing a connection between two programs. */
+/**
+ * The core MIPC connection object.
+ */
 typedef struct mipc_obj *mipc;
 
 /**
- * Starts a server that others can talk to.
- *
- * @param name       A unique name for other programs to find this one.
- * @param on_message A block of code that runs whenever someone sends a message.
- * @return           A handle to manage the server, or NULL if it fails.
+ * Start listening for incoming connections.
+ * 
+ * @param name A unique reverse-DNS style name (e.g. "com.example.service").
+ * @param on_message A block called whenever a message is received.
+ * @return A mipc object, or NULL if the port is already in use.
  */
-mipc _Nullable mipc_listen(const char *name, void (^_Nullable on_message)(mipc connection, const char *text));
+mipc _Nullable mipc_listen(const char * _Nonnull name, void (^ _Nonnull on_message)(mipc _Nonnull connection, const char * _Nonnull text));
 
 /**
- * Connects to a server by its name.
+ * Connect to a known service by name.
  *
- * @param name       The name of the server you want to talk to.
- * @param on_message A block of code that runs if the server sends something back.
- * @return           A handle to manage the connection, or NULL if it fails.
+ * @param name The name of the service to connect to.
+ * @param on_message Optional block to receive replies from the server.
+ * @return A mipc object, or NULL if the service was not found.
  */
-mipc _Nullable mipc_connect(const char *name, void (^_Nullable on_message)(mipc connection, const char *text));
+mipc _Nullable mipc_connect(const char * _Nonnull name, void (^ _Nullable on_message)(mipc _Nonnull connection, const char * _Nonnull text));
 
 /**
- * Sends some text to the other end of a connection.
+ * Connect to a service using its broadcast key (Sandbox-Tolerant).
+ * 
+ * Works even when the Bootstrap server is blocked by the App Sandbox.
  *
- * @param connection The active handle to send through.
- * @param text       The message to send.
- * @return           True if it worked, false if it failed.
+ * @param key The common key used by the publisher.
+ * @param on_message Optional block to receive replies.
  */
-bool mipc_send(mipc _Nullable connection, const char *text);
+mipc _Nullable mipc_connect_dynamic(const char * _Nonnull key, void (^ _Nullable on_message)(mipc _Nonnull connection, const char * _Nonnull text));
 
 /**
- * Publishes the server's name to a global registry (Global Domain Preferences).
- * This allows sandboxed clients to discover dynamic service names.
+ * Send a UTF-8 string over a connection.
+ * 
+ * Messages are guaranteed to be safe and truncated to 64KB.
  *
- * @param connection The listener handle (from mipc_listen).
- * @param key        A well-known key (e.g., "oowm.service").
- * @return           True if published, false otherwise.
+ * @param connection The mipc object to send over.
+ * @param text The string to send.
+ * @return true if the message was sent successfully.
  */
-bool mipc_publish(mipc connection, const char *key);
+bool mipc_send(mipc _Nullable connection, const char * _Nonnull text);
 
 /**
- * Connects to a server by looking up its name from a global registry.
- * This is the sandbox-tolerant version of mipc_connect.
+ * Broadcast a listener's name via Global Domain Preferences (Sandbox-Tolerant).
+ * 
+ * Call this after mipc_listen to make the service discoverable by sandboxed clients.
  *
- * @param key        The well-known key used in mipc_publish.
- * @param on_message A block of code that runs if the server sends something back.
- * @return           A handle to manage the connection, or NULL if it fails.
+ * @param connection A mipc object created via mipc_listen.
+ * @param key A short key for discovery (e.g. "oowm-bridge").
  */
-mipc _Nullable mipc_connect_dynamic(const char *key, void (^_Nullable on_message)(mipc connection, const char *text));
+bool mipc_publish(mipc _Nonnull connection, const char * _Nonnull key);
 
 /**
- * Closes a connection and cleans up.
+ * Close a connection and free all associated resources.
+ * 
+ * This is thread-safe and waits for all pending handlers to complete.
+ *
+ * @param connection The mipc object to close.
  */
 void mipc_close(mipc _Nullable connection);
 
-NS_ASSUME_NONNULL_END
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* LIB_MIPC_H */
+#endif /* MIPC_H */
