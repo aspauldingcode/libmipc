@@ -148,55 +148,82 @@ bool mipc_send(mipc _Nullable connection, const char *text_str) {
     return kr == KERN_SUCCESS;
 }
 
+
+// The protocol for the enabler service, which we need to call from the client.
+@protocol MIPCEnablerProtocol
+- (void)getMIPCServiceExtensionWithReply:(void (^)(NSString *))reply;
+@end
+
+/**
+ * DEPRECATED: The new sandboxed connection method does not require manual publishing.
+ */
 bool mipc_publish(mipc connection, const char *key) {
-    if (!connection || !key || !connection->name || !connection->is_listener) return false;
-
-    NSString *nsKey = [NSString stringWithFormat:@"libmipc_%s", key];
-    NSString *nsValue = [NSString stringWithUTF8String:connection->name];
-
-    CFPreferencesSetValue((__bridge CFStringRef)nsKey,
-                          (__bridge CFStringRef)nsValue,
-                          kCFPreferencesAnyApplication,
-                          kCFPreferencesCurrentUser,
-                          kCFPreferencesAnyHost);
-    
-    CFPreferencesSynchronize(kCFPreferencesAnyApplication,
-                             kCFPreferencesCurrentUser,
-                             kCFPreferencesAnyHost);
-
-    // Also post a notification to alert clients
-    NSString *notifName = [NSString stringWithFormat:@"com.aspauldingcode.libmipc.update.%s", key];
-    notify_post([notifName UTF8String]);
-
-    return true;
+    // This function is now a no-op.
+    return false;
 }
 
-mipc _Nullable mipc_connect_dynamic(const char *key, void (^on_message)(mipc connection, const char *text)) {
-    if (!key) return NULL;
+mipc _Nullable mipc_connect_dynamic(const char *main_service_name, void (^on_message)(mipc connection, const char *text)) {
+    if (!main_service_name) return NULL;
 
-    NSString *nsKey = [NSString stringWithFormat:@"libmipc_%s", key];
-    
-    // Force a sync to get the latest from other processes
-    CFPreferencesSynchronize(kCFPreferencesAnyApplication,
-                             kCFPreferencesCurrentUser,
-                             kCFPreferencesAnyHost);
+    // 1. Read the bootstrap token for the enabler service.
+    NSString *tokenPath = @"/tmp/libmipc_enabler_token.txt";
+    NSString *bootstrapToken = [NSString stringWithContentsOfFile:tokenPath encoding:NSUTF8StringEncoding error:nil];
 
-    CFPropertyListRef val = CFPreferencesCopyValue((__bridge CFStringRef)nsKey,
-                                                   kCFPreferencesAnyApplication,
-                                                   kCFPreferencesCurrentUser,
-                                                   kCFPreferencesAnyHost);
-    
-    if (!val || CFGetTypeID(val) != CFStringGetTypeID()) {
-        if (val) CFRelease(val);
-        return NULL;
+    if (!bootstrapToken) {
+        return NULL; // Daemon not running or token not found.
     }
 
-    NSString *serviceName = (__bridge NSString *)val;
-    mipc conn = mipc_connect([serviceName UTF8String], on_message);
+    // 2. Consume the bootstrap token.
+    sandbox_extension_consume([bootstrapToken UTF8String]);
+
+    // 3. Connect to the ENABLER service.
+    NSXPCConnection *enablerConn = [[NSXPCConnection alloc] initWithMachServiceName:@"com.libmipc.enabler" options:0];
     
-    CFRelease(val);
+    NSXPCInterface *enablerInterface = [NSXPCInterface interfaceWithProtocol:@protocol(MIPCEnablerProtocol)];
+    enablerConn.remoteObjectInterface = enablerInterface;
+    [enablerConn resume];
+
+    id proxy = [enablerConn remoteObjectProxyWithErrorHandler:^(NSError * _Nonnull error) {
+        NSLog(@"[libmipc] Error connecting to enabler service: %@", error);
+    }];
+
+    // 4. Ask the enabler for a secondary, process-specific token for the main service.
+    // This is a synchronous wait for simplicity in this library function.
+    dispatch_semaphore_t sema = dispatch_semaphore_create(0);
+    __block NSString *secondaryToken = nil;
+
+    [proxy getMIPCServiceExtensionWithReply:^(NSString *token){
+        if (token) {
+            secondaryToken = token;
+        }
+        dispatch_semaphore_signal(sema);
+    }];
+
+    // Wait for the reply, but with a timeout.
+    dispatch_semaphore_wait(sema, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)));
+    [enablerConn invalidate];
+
+    if (!secondaryToken) {
+        return NULL; // Failed to get secondary token.
+    }
+
+    // 5. Consume the secondary token.
+    int64_t handle = sandbox_extension_consume([secondaryToken UTF8String]);
+    if (handle <= 0) {
+        return NULL; // Invalid secondary token.
+    }
+
+    // 6. Success! Now connect to the MAIN service using the standard mipc_connect.
+    mipc conn = mipc_connect(main_service_name, on_message);
+
+    // 7. IMPORTANT: Release the handle.
+    // Since mipc_connect is synchronous, we can release it immediately.
+    // If connection were async, this handle would need to be stored and released on disconnect.
+    sandbox_extension_release(handle);
+
     return conn;
 }
+
 
 void mipc_close(mipc _Nullable bus) {
     if (!bus) return;
