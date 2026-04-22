@@ -157,7 +157,7 @@ bool mipc_send(mipc _Nullable connection, const char *text_str) {
 /**
  * DEPRECATED: The new sandboxed connection method does not require manual publishing.
  */
-bool mipc_publish(mipc connection, const char *key) {
+bool mipc_publish(__unused mipc connection, __unused const char *key) {
     // This function is now a no-op.
     return false;
 }
