@@ -4,6 +4,8 @@
 #include <mach/mach.h>
 #include <pthread.h>
 
+#define MIPC_MSG_SIZE 65536
+
 // Private sandbox function declarations needed by the client.
 char *sandbox_extension_issue_mach_to_process(const char *extension_class, const char *name, uint32_t flags, audit_token_t);
 char *sandbox_extension_issue_mach(const char *extension_class, const char *name, uint32_t flags);
