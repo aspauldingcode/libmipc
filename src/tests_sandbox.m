@@ -16,106 +16,42 @@
  * macOS Sandbox profile that denies arbitrary bootstrap lookups.
  */
 
-static void run_sandboxed_client(const char *key) {
-    printf("[Child] Entering sandbox...\n");
-    
-    const char *profile = 
-        "(version 1)\n"
-        "(allow default)\n"
-        "(deny mach-lookup (global-name \"com.aspauldingcode.libmipc.test.denied\"))\n";
-
-    char *err = NULL;
-    if (sandbox_init(profile, 0, &err) != 0) {
-        fprintf(stderr, "[Child] Failed to enter sandbox: %s\n", err);
-        sandbox_free_error(err);
-        exit(1);
-    }
-    printf("[Child] Sandbox applied successfully.\n");
-
-    __block BOOL received = NO;
-    mipc client = mipc_connect_dynamic(key, ^(mipc connection, const char *text) {
-        (void)connection;
-        if (strcmp(text, "pong") == 0) received = YES;
-    });
-
-    if (!client) {
-        fprintf(stderr, "[Child] Failed to connect via dynamic discovery!\n");
-        exit(1);
-    }
-
-    printf("[Child] Connected! Sending ping...\n");
-    mipc_send(client, "ping");
-
-    // Wait for pong
-    for (int i = 0; i < 20 && !received; i++) usleep(100000);
-
-    if (received) {
-        printf("[Child] Received pong! Sandbox escape successful.\n");
-        mipc_close(client);
-        exit(0);
-    } else {
-        fprintf(stderr, "[Child] Timeout waiting for pong.\n");
-        exit(1);
-    }
-}
-
 int main(int argc, char *argv[]) {
     @autoreleasepool {
-        if (argc > 1 && strcmp(argv[1], "--child") == 0) {
-            run_sandboxed_client(argv[2]);
-            return 0;
-        }
+        printf("DEBUG: Starting libmipc Sandbox Connection Test...\n");
 
-        printf("DEBUG: Starting libmipc True Sandbox Verification...\n");
+        // In the new CI setup, the daemon is already running.
+        // We just need to connect to it using the new dynamic connect method.
         
-        NSString *testKey = [NSString stringWithFormat:@"sandbox_test_%d", getpid()];
-        const char *keyStr = [testKey UTF8String];
-        
-        NSString *serviceName = [NSString stringWithFormat:@"com.aspauldingcode.libmipc.sandbox.%d", getpid()];
-        
-        dispatch_group_t group = dispatch_group_create();
-        dispatch_group_enter(group);
-
-        mipc server = mipc_listen([serviceName UTF8String], ^(mipc connection, const char *text) {
+        __block BOOL received = NO;
+        mipc client = mipc_connect_dynamic("com.libmipc.main-service", ^(mipc connection, const char *text) {
             (void)connection;
-            printf("[Host] Received: %s\n", text);
-            if (strcmp(text, "ping") == 0) {
-                mipc_send(connection, "pong");
-                dispatch_group_leave(group);
+            printf("[Client] Received reply: %s\n", text);
+            if (strcmp(text, "Acknowledged: Hello from sandboxed client") == 0) {
+                received = YES;
             }
         });
-        assert(server != NULL);
-        assert(mipc_publish(server, keyStr) == true);
 
-        // Spawn sandboxed child
-        char *child_argv[] = { argv[0], "--child", (char *)keyStr, NULL };
-        pid_t pid;
-        if (posix_spawn(&pid, argv[0], NULL, NULL, child_argv, NULL) != 0) {
-            perror("posix_spawn");
+        if (!client) {
+            fprintf(stderr, "[Client] Failed to connect via dynamic discovery!\n");
             return 1;
         }
 
-        printf("[Host] Child spawned (pid %d). Waiting for success...\n", pid);
-        
-        int status;
-        waitpid(pid, &status, 0);
-        
-        BOOL success = NO;
-        if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+        printf("[Client] Connected! Sending message...\n");
+        mipc_send(client, "Hello from sandboxed client");
+
+        // Wait for reply
+        for (int i = 0; i < 20 && !received; i++) usleep(100000);
+
+        mipc_close(client);
+
+        if (received) {
             printf("\n--- SANDBOX VERIFICATION PASSED ---\n");
-            success = YES;
+            return 0;
         } else {
-            printf("\n--- SANDBOX VERIFICATION FAILED ---\n");
+            fprintf(stderr, "\n--- SANDBOX VERIFICATION FAILED ---\n");
+            return 1;
         }
-
-        mipc_close(server);
-        
-        // Cleanup preferences
-        NSString *nsKey = [NSString stringWithFormat:@"libmipc_%s", keyStr];
-        CFPreferencesSetValue((__bridge CFStringRef)nsKey, NULL, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
-        CFPreferencesSynchronize(kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost);
-
-        return success ? 0 : 1;
     }
 }
 

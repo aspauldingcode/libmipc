@@ -47,153 +47,70 @@
         };
       });
 
-      # Unit tests and Example compilation
-      checks = forAllSystems (system: let pkgs = pkgsFor.${system}; arch = if system == "aarch64-darwin" then "arm64" else "x86_64"; in {
-        test = pkgs.stdenvNoCC.mkDerivation {
-          pname = "libmipc-tests";
-          version = "1.0.0";
-          src = ./.;
-          __noChroot = true;
-          buildPhase = ''
-            unset SDKROOT
-            unset DEVELOPER_DIR
-            unset NIX_APPLE_SDK_VERSION
-            export PATH=/usr/bin:/bin:/usr/sbin
-            echo "Compiling tests..."
-            xcrun clang -arch ${arch} -o tests_mipc \
-              -fobjc-arc -Wall -Werror -Wextra -Wpedantic -Iinclude src/mipc.m src/tests_mipc.m \
-              -framework Foundation -framework CoreFoundation
-          '';
-          installPhase = ''
-            echo "Running tests..."
-            ./tests_mipc
-            mkdir $out
-          '';
-        };
-
-        example = pkgs.stdenvNoCC.mkDerivation {
-          pname = "libmipc-examples";
-          version = "1.0.0";
-          src = ./.;
-          __noChroot = true;
-          buildPhase = ''
-            unset SDKROOT
-            unset DEVELOPER_DIR
-            unset NIX_APPLE_SDK_VERSION
-            export PATH=/usr/bin:/bin:/usr/sbin
-            
-            echo "Compiling example server..."
-            xcrun clang -arch ${arch} -o server \
-              -fobjc-arc -Wall -Werror -Wextra -Iinclude src/mipc.m example/server.m \
-              -framework Foundation -framework CoreFoundation
+      checks = forAllSystems (system: let pkgs = pkgsFor.${system}; arch = if system == "aarch64-darwin" then "arm64" else "x86_64"; in
+        let 
+          # Unified test runner for all checks that need the daemon
+          unifiedTestRunner = pkgs.stdenvNoCC.mkDerivation {
+            pname = "libmipc-unified-tests";
+            version = "1.0.0";
+            src = ./.;
+            __noChroot = true;
+            buildPhase = ''
+              unset SDKROOT
+              unset DEVELOPER_DIR
+              unset NIX_APPLE_SDK_VERSION
+              export PATH=/usr/bin:/bin:/usr/sbin
               
-            echo "Compiling example client..."
-            xcrun clang -arch ${arch} -o client \
-              -fobjc-arc -Wall -Werror -Wextra -Iinclude src/mipc.m example/client.m \
-              -framework Foundation -framework CoreFoundation
-          '';
-          installPhase = ''
-            mkdir -p $out/bin
-            cp server client $out/bin/
-          '';
-        };
+              echo "Compiling daemon for test..."
+              xcrun clang -arch ${arch} -o mipcd \
+                -fobjc-arc -Wall -Werror -Wextra -Iinclude daemon/mipcd.m \
+                -framework Foundation
 
-        security = pkgs.stdenvNoCC.mkDerivation {
-          pname = "libmipc-security";
-          version = "1.0.0";
-          src = ./.;
-          __noChroot = true;
-          buildPhase = ''
-            unset SDKROOT
-            unset DEVELOPER_DIR
-            unset NIX_APPLE_SDK_VERSION
-            export PATH=/usr/bin:/bin:/usr/sbin
-            
-            echo "Compiling security test runner..."
-            xcrun clang -arch ${arch} -o tests_security \
-              -fobjc-arc -Wall -Werror -Wextra -Wpedantic -Iinclude src/mipc.m src/tests_security.m \
-              -framework Foundation -framework CoreFoundation
-          '';
-          installPhase = ''
-            set -x
-            echo "Running security tests..."
-            ./tests_security
-            mkdir $out
-          '';
-        };
+              echo "Compiling all test runners..."
+              for test_file in src/tests_*.m; do
+                test_name=$(basename "$test_file" .m)
+                echo "Compiling $test_name..."
+                xcrun clang -arch ${arch} -o "$test_name" \
+                  -fobjc-arc -Wall -Werror -Wextra -Wpedantic -Iinclude src/mipc.m "$test_file" \
+                  -framework Foundation -framework CoreFoundation
+              done
+            '';
+            installPhase = ''
+              echo "Starting daemon in background..."
+              ./mipcd &
+              MIPCD_PID=$!
+              sleep 2 # Give daemon time to start
 
-        discovery = pkgs.stdenvNoCC.mkDerivation {
-          pname = "libmipc-discovery";
-          version = "1.0.0";
-          src = ./.;
-          __noChroot = true;
-          buildPhase = ''
-            unset SDKROOT
-            unset DEVELOPER_DIR
-            unset NIX_APPLE_SDK_VERSION
-            export PATH=/usr/bin:/bin:/usr/sbin
-            
-            echo "Compiling discovery test runner..."
-            xcrun clang -arch ${arch} -o tests_discovery \
-              -fobjc-arc -Wall -Werror -Wextra -Wpedantic -Iinclude src/mipc.m src/tests_discovery.m \
-              -framework Foundation -framework CoreFoundation
-          '';
-          installPhase = ''
-            echo "Running discovery tests..."
-            ./tests_discovery
-            mkdir $out
-          '';
-        };
+              # The 'test' check is bootstrap-independent and doesn't need the daemon
+              echo "--- Running Basic MIPC Test ---"
+              ./tests_mipc
 
-        sandbox = pkgs.stdenvNoCC.mkDerivation {
-          pname = "libmipc-sandbox";
-          version = "1.0.0";
-          src = ./.;
-          __noChroot = true;
-          buildPhase = ''
-            unset SDKROOT
-            unset DEVELOPER_DIR
-            unset NIX_APPLE_SDK_VERSION
-            export PATH=/usr/bin:/bin:/usr/sbin
-            
-            echo "Compiling sandbox verification runner..."
-            xcrun clang -arch ${arch} -o tests_sandbox \
-              -fobjc-arc -Wall -Werror -Wextra -Wpedantic -Iinclude src/mipc.m src/tests_sandbox.m \
-              -framework Foundation -framework CoreFoundation
-          '';
-          installPhase = ''
-            echo "Building sandbox verification runner..."
-            # Note: sandbox_init requires host entitlements. In some CI/Nix environments,
-            # it may fail with 'Operation not permitted'. We build it here for verification,
-            # but users should run it on a real host for true validation.
-            echo "Running sandbox verification (may fail in restricted Nix environments)..."
-            ./tests_sandbox || echo "SKIPPING: Sandbox init restricted in this environment."
-            mkdir $out
-          '';
-        };
+              # All other tests require the daemon
+              echo "--- Running Sandbox Test ---"
+              ./tests_sandbox
 
-        stress = pkgs.stdenvNoCC.mkDerivation {
-          pname = "libmipc-stress";
-          version = "1.0.0";
-          src = ./.;
-          __noChroot = true;
-          buildPhase = ''
-            unset SDKROOT
-            unset DEVELOPER_DIR
-            unset NIX_APPLE_SDK_VERSION
-            export PATH=/usr/bin:/bin:/usr/sbin
-            
-            echo "Compiling stress test runner..."
-            xcrun clang -arch ${arch} -o tests_stress \
-              -fobjc-arc -Wall -Werror -Wextra -Wpedantic -Iinclude src/mipc.m src/tests_stress.m \
-              -framework Foundation -framework CoreFoundation
-          '';
-          installPhase = ''
-            echo "Running stress tests..."
-            ./tests_stress
-            mkdir $out
-          '';
-        };
-      });
+              echo "--- Running Security Test ---"
+              ./tests_security
+
+              echo "--- Running Discovery Test ---"
+              ./tests_discovery
+
+              echo "--- Running Stress Test ---"
+              ./tests_stress
+
+              echo "Cleaning up daemon..."
+              kill $MIPCD_PID
+              mkdir $out
+            '';
+          };
+        in
+        {
+          # The main 'test' check now runs everything
+          test = unifiedTestRunner;
+          sandbox = unifiedTestRunner;
+          security = unifiedTestRunner;
+          stress = unifiedTestRunner;
+          discovery = unifiedTestRunner;
+        });
     };
 }
