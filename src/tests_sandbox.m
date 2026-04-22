@@ -16,7 +16,7 @@
  * macOS Sandbox profile that denies arbitrary bootstrap lookups.
  */
 
-int main(int argc, char *argv[]) {
+int main(__unused int argc, __unused char *argv[]) {
     @autoreleasepool {
         printf("DEBUG: Starting libmipc Sandbox Connection Test...\n");
 
