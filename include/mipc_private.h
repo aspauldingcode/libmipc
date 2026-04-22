@@ -11,6 +11,9 @@ int64_t sandbox_extension_consume(const char *extension_token);
 int sandbox_extension_release(int64_t extension_handle);
 extern const char *APP_SANDBOX_MACH;
 
+// Internal worker thread function.
+void *mipc_worker(void *arg);
+
 
 // The internal structure for a mipc object.
 typedef struct mipc_obj {
