@@ -122,7 +122,7 @@ void IssueBootstrapToken(void) {
 // MARK: - Main Entry Point
 // +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-int main(int argc, const char * argv[]) {
+int main(__unused int argc, __unused const char * argv[]) {
     @autoreleasepool {
         // 1. Issue the bootstrap token for clients to find the enabler service.
         IssueBootstrapToken();
